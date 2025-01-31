@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, render_template_string
 from datetime import datetime
 import os
 from functools import wraps
@@ -79,7 +79,7 @@ def chat():
         current_log.add_message(data['message'], is_bot=False)
         
         # Generate bot response (replace with actual AI processing)
-        bot_response = "I received your message: " + data['message']
+        bot_response = render_template_string("AI Bot says: " + data['message'])
         bot_message = current_log.add_message(bot_response, is_bot=True)
 
         return jsonify({
