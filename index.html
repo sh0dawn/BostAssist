@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BotAssist</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Simple frontend JavaScript to interact with Flask backend
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const messageContainer = document.getElementById('messages');
+            const sendButton = document.getElementById('send-button');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            // Disable input during processing
+            input.disabled = true;
+            sendButton.disabled = true;
+
+            // Add user message
+            appendMessage(message, false);
+            input.value = '';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    appendMessage(result.data.text, true);
+                } else {
+                    appendMessage("I apologize, but I'm having trouble processing your request.", true);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                appendMessage("Network error. Please try again.", true);
+            } finally {
+                input.disabled = false;
+                sendButton.disabled = false;
+                input.focus();
+                scrollToBottom();
+            }
+        }
+
+        function appendMessage(text, isBot) {
+            const messageContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isBot ? 'justify-start' : 'justify-end'} mb-4`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = `max-w-[80%] rounded-lg p-3 ${
+                isBot ? 'bg-gray-700 text-gray-100' : 'bg-blue-600 text-white'
+            }`;
+            
+            if (isBot) {
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'flex items-center space-x-2 mb-1';
+                headerDiv.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bot">
+                        <path d="M12 8V4H8"/>
+                        <rect width="16" height="12" x="4" y="8" rx="2"/>
+                        <path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>
+                    </svg>
+                    <span class="text-sm font-semibold">BotAssist</span>
+                `;
+                contentDiv.appendChild(headerDiv);
+            }
+            
+            const textDiv = document.createElement('p');
+            textDiv.className = 'text-sm';
+            textDiv.textContent = text;
+            contentDiv.appendChild(textDiv);
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'text-xs opacity-70 mt-1 block';
+            timeSpan.textContent = new Date().toLocaleTimeString();
+            contentDiv.appendChild(timeSpan);
+            
+            messageDiv.appendChild(contentDiv);
+            messageContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const messageContainer = document.getElementById('messages');
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+
+        // Add event listener for message submission
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('chat-form');
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                sendMessage();
+            });
+
+            // Initial welcome message
+            appendMessage("Hello! I'm BotAssist, your AI assistant. How can I help you today?", true);
+        });
+    </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100">
+    <header class="bg-gray-800 border-b border-gray-700 p-4">
+        <div class="container mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-400">
+                    <path d="M12 8V4H8"/>
+                    <rect width="16" height="12" x="4" y="8" rx="2"/>
+                    <path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>
+                </svg>
+                <h1 class="text-2xl font-bold text-blue-400">BotAssist</h1>
+            </div>
+        </div>
+    </header>
+    
+    <main class="container mx-auto p-4">
+        <div class="max-w-4xl mx-auto">
+            <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 h-[calc(100vh-12rem)]">
+                <div id="messages" class="h-[calc(100%-4rem)] overflow-y-auto p-4">
+                    <!-- Messages will be dynamically added here -->
+                </div>
+
+                <form id="chat-form" class="border-t border-gray-700 p-4 bg-gray-800 rounded-b-lg">
+                    <div class="flex space-x-2">
+                        <input
+                            id="message-input"
+                            type="text"
+                            placeholder="Type your message..."
+                            class="flex-1 bg-gray-700 text-gray-100 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600"
+                        />
+                        <button
+                            id="send-button"
+                            type="submit"
+                            class="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 flex items-center space-x-2"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                            <span>Send</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
