@@ -1,11 +1,13 @@
-# app.py
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from datetime import datetime
 import os
 from functools import wraps
 import uuid
 
-app = Flask(__name__)
+app = Flask(__name__, 
+            static_folder='static',  # Specify static folder
+            static_url_path='/static')  # Set static URL path
+
 app.secret_key = os.urandom(24)
 
 # In-memory storage (replace with database in production)
@@ -55,6 +57,10 @@ class ChatLog:
             'messages': [m.to_dict() for m in self.messages],
             'createdAt': self.created_at.isoformat()
         }
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -111,11 +117,6 @@ def security_info():
             'lastUpdate': datetime.now().isoformat()
         }
     })
-
-# Serve static files (React frontend)
-@app.route('/')
-def serve_app():
-    return app.send_static_file('index.html')
 
 if __name__ == '__main__':
     # Initialize with a welcome message
