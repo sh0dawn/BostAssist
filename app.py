@@ -123,4 +123,4 @@ if __name__ == '__main__':
     initial_log.add_message("Hello! I'm BotAssist, your AI assistant. How can I help you today?", is_bot=True)
     chat_logs.append(initial_log)
     
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
