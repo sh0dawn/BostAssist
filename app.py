@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, render_template, render_template_string
+from flask import Flask, request, jsonify, render_template
+from jinja2 import Environment, StrictUndefined
 from datetime import datetime, timedelta, UTC
 import os
 import jwt
@@ -31,6 +32,12 @@ ADMIN_COMMANDS = {
     "admin/render <template>": "Render a template for debugging (e.g., 'admin/render Hello {{name}}!')",
     "admin/debug": "Get debug information about the server"
 }
+
+SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
+
+def safe_render(template, **context):
+    env = Environment(undefined=StrictUndefined)
+    return env.from_string(template).render(context)
 
 def generate_help_message(is_admin=False):
     commands = ADMIN_COMMANDS if is_admin else USER_COMMANDS
@@ -108,11 +115,10 @@ def chat():
             if message.startswith('admin/render'):
                 template = message[len('admin/render'):].strip()
                 try:
-                    rendered = render_template_string(template)
+                    rendered = safe_render(template)  # Use sandboxed rendering for safety
                     response = f"Template rendered successfully:\n{rendered}"
                 except Exception as e:
-                    response = f"Error rendering template: {str(e)}"
-                    
+                    response = f"Error rendering template: {str(e)}"       
             elif message == 'admin/messages':
                 response = f"Total messages since server start: {message_count}\nServer started at: {app.start_time.isoformat()}"
                 
@@ -154,19 +160,24 @@ def chat():
                     response = f"Content fetched from {url}: {r.text[:200]}..."
                 except Exception as e:
                     response = f"Error fetching URL: {str(e)}"
-
-            # Allow local file inclusion for paths starting with '/', '../' or './'
+            # What could go wrong if I let people check files on the server
             elif url.startswith('/') or url.startswith('..') or url.startswith('./'):
-                try:
-                    # Try opening the file specified by the path in the URL
-                    with open(url, 'r') as file:
-                        response = f"Content fetched from {url}: {file.read()[:200]}..."
-                except PermissionError:
-                    response = f"Permission error: Unable to access {url}. You might not have the required permissions."
-                except FileNotFoundError:
-                    response = f"Error: The file {url} was not found."
-                except Exception as e:
-                    response = f"Error fetching file: {str(e)}"
+                file_path = os.path.join(SAFE_DIRECTORY, message.split('fetch')[-1].strip())
+                #update : I changed my mind and decided to add this little security buff just in case
+                # my website should be pretty safe now
+                if not os.path.abspath(file_path).startswith(SAFE_DIRECTORY):
+                    response = "Access denied: Invalid file path"
+                else:
+                    try:
+                        # Try opening the file specified by the path in the URL
+                        with open(url, 'r') as file:
+                            response = f"Content fetched from {url}: {file.read()[:200]}..."
+                    except PermissionError:
+                        response = f"Permission error: Unable to access {url}. You might not have the required permissions."
+                    except FileNotFoundError:
+                        response = f"Error: The file {url} was not found."
+                    except Exception as e:
+                        response = f"Error fetching file: {str(e)}"
             else:
                 response = "Only localhost URLs and local file paths are allowed"
         elif 'legal' in message or 'usage' in message:
