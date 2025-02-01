@@ -28,7 +28,8 @@ ADMIN_COMMANDS = {
     **USER_COMMANDS,
     "admin/security": "Get detailed security information",
     "admin/messages": "Get message count since server start",
-    "admin/render <template>": "Render a template for debugging"
+    "admin/render <template>": "Render a template for debugging (e.g., 'admin/render Hello {{name}}!')",
+    "admin/debug": "Get debug information about the server"
 }
 
 def generate_help_message(is_admin=False):
@@ -83,25 +84,6 @@ def token_required(f):
         return f(*args, **kwargs)
     return decorated
 
-@app.route('/login', methods=['POST'])
-def login():
-    auth_key = request.headers.get('X-API-Key')
-    
-    if not auth_key or auth_key != API_KEY:
-        return jsonify({'error': 'Invalid API key'}), 401
-    
-    token = generate_token(auth_key)
-    return jsonify({
-        'token': token,
-        'message': 'Successfully logged in as admin'
-    })
-
-@app.route('/')
-def index():
-    token = request.cookies.get('token')
-    is_admin = is_admin_token(token) if token else False
-    return render_template('index.html', is_admin=is_admin)
-
 @app.route('/chat', methods=['POST'])
 def chat():
     global message_count
@@ -120,6 +102,44 @@ def chat():
         # Help command
         if message.strip() == 'help':
             response = generate_help_message(is_admin)
+            
+        # Admin commands
+        elif is_admin and message.startswith('admin/'):
+            if message.startswith('admin/render'):
+                template = message[len('admin/render'):].strip()
+                try:
+                    rendered = render_template_string(template)
+                    response = f"Template rendered successfully:\n{rendered}"
+                except Exception as e:
+                    response = f"Error rendering template: {str(e)}"
+                    
+            elif message == 'admin/messages':
+                response = f"Total messages since server start: {message_count}\nServer started at: {app.start_time.isoformat()}"
+                
+            elif message == 'admin/security':
+                security_info = {
+                    'isHttps': request.is_secure,
+                    'apiVersion': '1.0.0',
+                    'serverLocation': 'EU-West',
+                    'lastAudit': datetime.now().isoformat(),
+                    'certificateExpiry': (datetime.now().timestamp() + 30 * 24 * 60 * 60) * 1000,
+                    'securityUpdates': 'up-to-date',
+                    'firewallRules': ['block_external_ips', 'allow_localhost_only']
+                }
+                response = "Security Information:\n" + "\n".join(f"• {k}: {v}" for k, v in security_info.items())
+                
+            elif message == 'admin/debug':
+                debug_info = {
+                    'server_time': datetime.now().isoformat(),
+                    'python_version': os.sys.version,
+                    'message_count': message_count,
+                    'uptime': str(datetime.now(UTC) - app.start_time)
+                }
+                response = "Debug Information:\n" + "\n".join(f"• {k}: {v}" for k, v in debug_info.items())
+                
+            else:
+                response = "Unknown admin command. Type 'help' to see available commands."
+        
         # Basic user commands
         elif 'time' in message:
             response = f"Current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -135,13 +155,11 @@ def chat():
                 except Exception as e:
                     response = f"Error fetching URL: {str(e)}"
 
-            # We should let user access the website content also using local paths
-            # What could possibly go wrong ?
+            # Allow local file inclusion for paths starting with '/', '../' or './'
             elif url.startswith('/') or url.startswith('..') or url.startswith('./'):
                 try:
                     # Try opening the file specified by the path in the URL
                     with open(url, 'r') as file:
-                        # Avoid response of being too long
                         response = f"Content fetched from {url}: {file.read()[:200]}..."
                 except PermissionError:
                     response = f"Permission error: Unable to access {url}. You might not have the required permissions."
@@ -151,7 +169,6 @@ def chat():
                     response = f"Error fetching file: {str(e)}"
             else:
                 response = "Only localhost URLs and local file paths are allowed"
-
         elif 'legal' in message or 'usage' in message:
             response = "BotAssist is for authorized use only. All interactions are logged and monitored."
         elif 'security' in message:
@@ -171,60 +188,24 @@ def chat():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/security-info', methods=['GET'])
-def basic_security_info():
-    return jsonify({
-        'isHttps': request.is_secure,
-        'apiVersion': '1.0.0',
-        'lastAudit': datetime.now().isoformat()
-    })
+@app.route('/')
+def index():
+    token = request.cookies.get('token')
+    is_admin = is_admin_token(token) if token else False
+    return render_template('index.html', is_admin=is_admin)
 
-@app.route('/admin/security-info', methods=['GET'])
-@token_required
-def admin_security_info():
+@app.route('/login', methods=['POST'])
+def login():
+    auth_key = request.headers.get('X-API-Key')
+    
+    if not auth_key or auth_key != API_KEY:
+        return jsonify({'error': 'Invalid API key'}), 401
+    
+    token = generate_token(auth_key)
     return jsonify({
-        'isHttps': request.is_secure,
-        'apiVersion': '1.0.0',
-        'serverLocation': 'EU-West',
-        'lastAudit': datetime.now().isoformat(),
-        'certificateExpiry': (datetime.now().timestamp() + 30 * 24 * 60 * 60) * 1000,
-        'activeConnections': 42,
-        'apiKeyStrength': 'strong',
-        'securityUpdates': {
-            'status': 'up-to-date',
-            'lastUpdate': datetime.now().isoformat()
-        },
-        'firewallRules': [
-            'block_external_ips',
-            'allow_localhost_only',
-            'rate_limit_enabled'
-        ],
-        'securityPatches': 'all_current'
+        'token': token,
+        'message': 'Successfully logged in as admin'
     })
-
-@app.route('/admin/message-count', methods=['GET'])
-@token_required
-def get_message_count():
-    return jsonify({
-        'message_count': message_count,
-        'since': app.start_time.isoformat()
-    })
-
-@app.route('/admin/render-template', methods=['POST'])
-@token_required
-def admin_render_template():
-    try:
-        data = request.get_json()
-        if not data or 'template' not in data:
-            return jsonify({'error': 'Template is required'}), 400
-        
-        rendered = render_template_string(data['template'])
-        return jsonify({
-            'success': True,
-            'rendered': rendered
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 # Store startup time
 app.start_time = datetime.now(UTC)
@@ -235,5 +216,6 @@ if __name__ == '__main__':
     print(f"Test admin login with:")
     print(f"curl -X POST -H 'X-API-Key: {API_KEY}' http://localhost:5000/login")
     print(f"Then use the token in subsequent requests:")
-    print(f"curl -H 'Authorization: Bearer <token>' http://localhost:5000/admin/security-info")
+    print(f"curl -H 'Authorization: Bearer <token>' http://localhost:5000/chat")
+    print(f"Available admin commands: {list(ADMIN_COMMANDS.keys())}")
     serve(app, host="0.0.0.0", port=5000)
