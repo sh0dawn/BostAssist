@@ -1,127 +1,93 @@
-from flask import Flask, request, jsonify, render_template, render_template_string
-from datetime import datetime
+from flask import Flask, request, jsonify, render_template, render_template_string, make_response
+from datetime import datetime, timedelta
 import os
+import jwt
 from functools import wraps
-import uuid
 
 app = Flask(__name__, 
             static_folder='static',  # Specify static folder
             static_url_path='/static')  # Set static URL path
 
 app.secret_key = os.urandom(24)
+JWT_SECRET = os.urandom(24).hex()
 
-# In-memory storage (replace with database in production)
-chat_logs = []
-API_KEYS = {'test-key': 'admin'}  # In production, use proper key management
+# Load API key from config file
+CONFIG_FILE = "config.py"
+API_KEY = ""
+try:
+    with open(CONFIG_FILE, "r") as f:
+        exec(f.read())  # Load API_KEY from config file
+except Exception as e:
+    print(f"Warning: Could not load config file - {e}")
 
-def require_api_key(f):
+BOT_TEMPLATES = {
+    "default": "AI Bot says: {{ user_message }}",
+    "admin": "AI Admin Panel: {{ user_message }}"
+}
+
+def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        api_key = request.headers.get('X-API-Key')
-        if not api_key or api_key not in API_KEYS:
-            return jsonify({'success': False, 'error': 'Invalid API key'}), 401
+        token = request.cookies.get('jwt_token')
+        if not token:
+            return jsonify({'success': False, 'error': 'Missing token'}), 401
+        try:
+            data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({'success': False, 'error': 'Token expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'success': False, 'error': 'Invalid token'}), 401
         return f(*args, **kwargs)
     return decorated
 
-class Message:
-    def __init__(self, text, is_bot=False):
-        self.id = len(chat_logs) + 1
-        self.text = text
-        self.is_bot = is_bot
-        self.timestamp = datetime.now()
+@app.route("/login", methods=["POST"])
+def login():
+    api_key = request.headers.get("X-API-Key")
+    if api_key != API_KEY:
+        return jsonify({"success": False, "error": "Invalid API Key"}), 403
+    
+    token = jwt.encode({
+        'exp': datetime.utcnow() + timedelta(hours=1),
+        'role': 'admin'
+    }, JWT_SECRET, algorithm="HS256")
+    
+    resp = make_response(jsonify({"success": True, "message": "Logged in successfully"}))
+    resp.set_cookie('jwt_token', token, httponly=True)
+    return resp
 
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'text': self.text,
-            'isBot': self.is_bot,
-            'timestamp': self.timestamp.isoformat()
-        }
-
-class ChatLog:
-    def __init__(self):
-        self.id = len(chat_logs) + 1
-        self.user_id = str(uuid.uuid4())
-        self.messages = []
-        self.created_at = datetime.now()
-
-    def add_message(self, text, is_bot=False):
-        message = Message(text, is_bot)
-        self.messages.append(message)
-        return message
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'userId': self.user_id,
-            'messages': [m.to_dict() for m in self.messages],
-            'createdAt': self.created_at.isoformat()
-        }
-
-@app.route('/')
+@app.route("/")
 def index():
     return render_template('index.html')
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    try:
-        data = request.get_json()
-        if not data or 'message' not in data:
-            return jsonify({'success': False, 'error': 'Message is required'}), 400
-
-        # Create new chat log if none exists
-        if not chat_logs:
-            chat_logs.append(ChatLog())
-
-        current_log = chat_logs[-1]
-        
-        # Process user message
-        current_log.add_message(data['message'], is_bot=False)
-        
-        # Generate bot response (replace with actual AI processing)
-        bot_response = render_template_string("AI Bot says: " + data['message'])
-        bot_message = current_log.add_message(bot_response, is_bot=True)
-
-        return jsonify({
-            'success': True,
-            'data': bot_message.to_dict()
-        })
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/get_logs', methods=['GET'])
-@require_api_key
-def get_logs():
-    try:
-        return jsonify({
-            'success': True,
-            'data': [log.to_dict() for log in chat_logs]
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/security-info', methods=['GET'])
-@require_api_key
-def security_info():
-    return jsonify({
-        'isHttps': request.is_secure,
-        'apiVersion': '1.0.0',
-        'serverLocation': 'EU-West',
-        'lastAudit': datetime.now().isoformat(),
-        'certificateExpiry': (datetime.now().timestamp() + 30 * 24 * 60 * 60) * 1000,
-        'activeConnections': 42,
-        'apiKeyStrength': 'strong',
-        'securityUpdates': {
-            'status': 'up-to-date',
-            'lastUpdate': datetime.now().isoformat()
-        }
-    })
-
-if __name__ == '__main__':
-    # Initialize with a welcome message
-    initial_log = ChatLog()
-    initial_log.add_message("Hello! I'm BotAssist, your AI assistant. How can I help you today?", is_bot=True)
-    chat_logs.append(initial_log)
+@app.route("/download")
+def download():
+    file = request.args.get("file")
+    if not file:
+        return "Missing file parameter", 400
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    try:
+        with open(file, "r") as f:
+            file_content = f.read()
+            return jsonify({"success": True, "bot_response": file_content})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+# Chatbot functionality
+@app.route("/chat", methods=["POST"])
+@token_required
+def chat():
+    user_message = request.form.get("message")
+    token = request.cookies.get('jwt_token')
+    decoded_token = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    
+    if decoded_token.get('role') == 'admin':
+        response_template = BOT_TEMPLATES.get("admin", "AI Admin Panel: {{ user_message }}")
+        bot_response = render_template_string(response_template, user_message=user_message)
+    else:
+        bot_response = BOT_TEMPLATES.get("default", "AI Bot says: {{ user_message }}").replace("{{ user_message }}", user_message)
+    
+    return jsonify({"success": True, "bot_response": bot_response})
+
+if __name__ == "__main__":
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=5000)

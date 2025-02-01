@@ -1,6 +1,1 @@
-DB_CONFIG = {
-    "host": "localhost",
-    "user": "botassist",
-    "password": "securepass123",
-    "database": "chatbot"
-}
+API_KEY = "b0cc0d2dc658733e4184a153e6e611af447b7ea9953d1bb88a7fb5cac349018e"
