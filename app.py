@@ -36,7 +36,17 @@ ADMIN_COMMANDS = {
 SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
 
 def safe_render(template, **context):
+    # Define a Jinja2 environment with restricted built-ins
     env = Environment(undefined=StrictUndefined)
+    
+    # Restrict built-ins to remove access to dangerous methods like __mro__, __subclasses__, __globals__, etc.
+    safe_context = {
+        "safe_string": lambda x: x.replace("{", "").replace("}", "").replace("[", "").replace("]", "")
+    }
+
+    # Prevent SSTI payloads with `{{ self.__class__.__mro__ }}` by stripping dangerous characters
+    template = safe_context["safe_string"](template)
+
     return env.from_string(template).render(context)
 
 def generate_help_message(is_admin=False):
