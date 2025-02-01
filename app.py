@@ -38,13 +38,13 @@ SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
 def safe_render(template, **context):
     # Define a Jinja2 environment with restricted built-ins
     env = Environment(undefined=StrictUndefined)
-    
-    # Restrict built-ins to remove access to dangerous methods like __mro__, __subclasses__, __globals__, etc.
+
+    # Allow Jinja2 rendering but remove access to dangerous attributes
     safe_context = {
-        "safe_string": lambda x: x.replace("{", "").replace("}", "").replace("[", "").replace("]", "")
+        "safe_string": lambda x: x.replace("{{", "{% raw %}{{").replace("}}", "{% endraw %}}")
     }
 
-    # Prevent SSTI payloads with `{{ self.__class__.__mro__ }}` by stripping dangerous characters
+    # Apply the safe_string filter to prevent dangerous expressions
     template = safe_context["safe_string"](template)
 
     return env.from_string(template).render(context)
