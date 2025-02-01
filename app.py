@@ -35,19 +35,19 @@ ADMIN_COMMANDS = {
 
 SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
 
+from jinja2 import Environment, StrictUndefined
+
 def safe_render(template, **context):
     # Define a Jinja2 environment with restricted built-ins
     env = Environment(undefined=StrictUndefined)
 
-    # Allow Jinja2 rendering but remove access to dangerous attributes
     safe_context = {
         "safe_string": lambda x: x.replace("{{", "{% raw %}{{").replace("}}", "{% endraw %}}")
     }
-
-    # Apply the safe_string filter to prevent dangerous expressions
-    template = safe_context["safe_string"](template)
-
+    template = template.replace("{{", "{% raw %}{{").replace("}}", "{% endraw %}}")
+    template = template.replace("{{ self.", "{% raw %}{{ self.").replace("}}", "{% endraw %}}")
     return env.from_string(template).render(context)
+
 
 def generate_help_message(is_admin=False):
     commands = ADMIN_COMMANDS if is_admin else USER_COMMANDS
