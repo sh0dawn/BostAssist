@@ -40,7 +40,6 @@ def safe_render(template, **context):
         undefined=StrictUndefined,
         autoescape=True
     )
-
     # Parse template to analyze variables used
     parsed_content = env.parse(template)
     used_variables = meta.find_undeclared_variables(parsed_content)
@@ -67,10 +66,6 @@ def safe_render(template, **context):
         'exec': None,  # Disallow exec() function
         'eval': None,  # Disallow eval() function
     })
-
-    # Optionally, log the variables that were blocked for auditing purposes
-    print(f"Blocked variables: {blocked_vars}")
-
     return env.from_string(template).render(safe_context)
 
 def generate_help_message(is_admin=False):
