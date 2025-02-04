@@ -3,6 +3,9 @@ from jinja2 import Environment, StrictUndefined, meta
 from datetime import datetime, timedelta, UTC
 import os
 import jwt
+import subprocess
+import threading
+import queue
 from functools import wraps
 from config import API_KEY
 import requests
@@ -12,6 +15,13 @@ app = Flask(__name__,
             static_url_path='/static')
 
 app.secret_key = os.urandom(24)
+
+# Paths
+LLAMA_BIN = "/home/developer/BostAssist/llama.cpp/build/bin/main"
+LLAMA_MODEL = "/home/developer/BostAssist/models/phi-2.Q4_K_M.gguf"
+
+# Queue for handling LLM requests asynchronously
+llm_queue = queue.Queue()
 
 # Global counter for messages
 message_count = 0
@@ -34,6 +44,29 @@ ADMIN_COMMANDS = {
 }
 
 SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
+
+# LLM Function
+def query_llm(prompt):
+    """Runs Phi-2 model using llama.cpp with low RAM optimization."""
+    try:
+        result = subprocess.run(
+            [LLAMA_BIN, "-m", LLAMA_MODEL, "-p", prompt, "-n", "100", "--temp", "0.7"],
+            capture_output=True, text=True, timeout=15
+        )
+        return result.stdout.strip()
+    except Exception as e:
+        return f"LLM error: {str(e)}"
+
+# Background worker for LLM
+def llm_worker():
+    while True:
+        prompt, response_queue = llm_queue.get()
+        response = query_llm(prompt)
+        response_queue.put(response)
+        llm_queue.task_done()
+
+# Start worker thread
+threading.Thread(target=llm_worker, daemon=True).start()
 
 def safe_render(template, **context):
     env = Environment(
@@ -214,7 +247,10 @@ def chat():
         elif 'security' in message:
             response = "Basic security information: HTTPS enabled, regular security audits performed."
         else:
-            response = f"I understood your message: {data['message']}\nType 'help' to see available commands."
+            # Use LLM when no command matches
+            response_queue = queue.Queue()
+            llm_queue.put((message, response_queue))
+            response = response_queue.get()  # Wait for LLM response            
         
         return jsonify({
             'success': True,
