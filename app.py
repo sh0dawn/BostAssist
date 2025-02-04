@@ -36,7 +36,8 @@ ADMIN_COMMANDS = {
 SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
 
 def safe_render(template, **context):
-    env = Environment(undefined=StrictUndefined)
+    env = Environment(undefined=StrictUndefined, autoescape=True)
+    env.globals.clear()  # Remove all global functions
     return env.from_string(template).render(context)
 
 def generate_help_message(is_admin=False):
