@@ -41,13 +41,20 @@ def safe_render(template, **context):
         autoescape=True
     )
 
+    # Parse template to analyze variables used
     parsed_content = env.parse(template)
     used_variables = meta.find_undeclared_variables(parsed_content)
 
+    # Restrict dangerous variables
     blocked_vars = {'self', '__globals__', '__builtins__', '__class__', 'os', 'subprocess'}
-    context = {k: v for k, v in context.items() if k not in blocked_vars}
+    safe_context = {k: v for k, v in context.items() if k not in blocked_vars}
 
-    return env.from_string(template).render(context)
+    # Provide only minimal builtins
+    safe_context['safe_var'] = "Think harder 😉"
+    safe_context['dir'] = dir 
+    safe_context['getattr'] = getattr
+
+    return env.from_string(template).render(safe_context)
 
 def generate_help_message(is_admin=False):
     commands = ADMIN_COMMANDS if is_admin else USER_COMMANDS
