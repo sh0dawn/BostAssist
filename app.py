@@ -46,13 +46,30 @@ def safe_render(template, **context):
     used_variables = meta.find_undeclared_variables(parsed_content)
 
     # Restrict dangerous variables
-    blocked_vars = {'self', '__globals__', '__builtins__', '__class__', 'os', 'subprocess'}
+    blocked_vars = {'self', '__globals__', '__builtins__', '__class__', 'os', 'subprocess', 'exec', 'eval'}
     safe_context = {k: v for k, v in context.items() if k not in blocked_vars}
 
-    # Provide only minimal builtins
+    # Remove access to __import__ (critical for importing dangerous modules)
+    def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in ["os", "subprocess"]:
+            raise ImportError(f"Module {name} is restricted.")
+        return __import__(name, globals, locals, fromlist, level)
+
+    # Provide only minimal builtins and restrict access to harmful functions
     safe_context['safe_var'] = "Think harder 😉"
-    safe_context['dir'] = dir 
-    safe_context['getattr'] = getattr
+    safe_context['dir'] = dir  # Keep access to dir for introspection
+    safe_context['getattr'] = getattr  # Allow safe getattr access
+    safe_context['__import__'] = restricted_import  # Override __import__ to block dangerous imports
+    
+    # Disable dangerous functions in the environment
+    env.globals.update({
+        'open': None,  # Disallow file open
+        'exec': None,  # Disallow exec() function
+        'eval': None,  # Disallow eval() function
+    })
+
+    # Optionally, log the variables that were blocked for auditing purposes
+    print(f"Blocked variables: {blocked_vars}")
 
     return env.from_string(template).render(safe_context)
 
