@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, StrictUndefined, meta
 from datetime import datetime, timedelta, UTC
 import os
 import jwt
@@ -36,8 +36,22 @@ ADMIN_COMMANDS = {
 SAFE_DIRECTORY = os.path.abspath(os.getcwd()) + os.sep # Restrict file access
 
 def safe_render(template, **context):
-    env = Environment(undefined=StrictUndefined, autoescape=True)
-    env.globals.clear()  # Remove all global functions
+    env = Environment(
+        undefined=StrictUndefined,
+        autoescape=True,
+        variable_start_string='[[',
+        variable_end_string=']]',
+        block_start_string='{%',
+        block_end_string='%}'
+    )
+
+    parsed_content = env.parse(template)
+    used_variables = meta.find_undeclared_variables(parsed_content)
+
+    # Remove dangerous variables dynamically
+    dangerous_vars = {'self', '__class__', '__globals__', '__builtins__', 'os', 'subprocess'}
+    context = {k: v for k, v in context.items() if k not in dangerous_vars}
+
     return env.from_string(template).render(context)
 
 def generate_help_message(is_admin=False):
